@@ -321,6 +321,9 @@ pub struct UserSignatures {
 /// Serde Visitor for deserializing `Signatures`.
 struct SignaturesVisitor;
 
+/// Serde Visitor for deserializing `UserSignatures`.
+struct UserSignaturesVisitor;
+
 /// A set of digital signatures created by a single homeserver.
 #[derive(Clone, Debug)]
 pub struct SignatureSet {
@@ -588,6 +591,31 @@ impl Serialize for Signatures {
     }
 }
 
+impl<'de> Deserialize<'de> for UserSignatures {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_map(UserSignaturesVisitor)
+    }
+}
+
+impl Serialize for UserSignatures {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map_serializer = serializer.serialize_map(Some(self.len()))?;
+
+        for (user_id, signature_set) in self.map.iter() {
+            map_serializer.serialize_key(&user_id.to_string())?;
+            map_serializer.serialize_value(signature_set)?;
+        }
+
+        map_serializer.end()
+    }
+}
+
 impl<'de> Visitor<'de> for SignaturesVisitor {
     type Value = Signatures;
 
@@ -604,6 +632,32 @@ impl<'de> Visitor<'de> for SignaturesVisitor {
         while let Some((server_name, signature_set)) = visitor.next_entry::<String, SignatureSet>()? {
             if let Err(_) = signatures.insert(&server_name, signature_set) {
                 return Err(M::Error::invalid_value(Unexpected::Str(&server_name), &self));
+            }
+        }
+
+        Ok(signatures)
+    }
+}
+
+impl<'de> Visitor<'de> for UserSignaturesVisitor {
+    type Value = UserSignatures;
+
+    fn expecting(&self, formatter: &mut Formatter) -> FmtResult {
+        write!(formatter, "digital signatures")
+    }
+
+    fn visit_map<M>(self, mut visitor: M) -> Result<Self::Value, M::Error>
+    where
+        M: MapAccess<'de>,
+    {
+        let mut signatures = match visitor.size_hint() {
+            Some(capacity) => UserSignatures::with_capacity(capacity),
+            None => UserSignatures::new(),
+        };
+
+        while let Some((user_id, signature_set)) = visitor.next_entry::<String, SignatureSet>()? {
+            if let Err(_) = signatures.insert(&user_id, signature_set) {
+                return Err(M::Error::invalid_value(Unexpected::Str(&user_id), &self));
             }
         }
 
