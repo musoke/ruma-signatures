@@ -135,6 +135,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate untrusted;
 extern crate url;
+extern crate ruma_identifiers;
 
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
@@ -148,6 +149,7 @@ use serde::ser::SerializeMap;
 use serde_json::{Value, to_string};
 use untrusted::Input;
 use url::Url;
+use ruma_identifiers::UserId;
 
 pub use url::Host;
 
@@ -308,6 +310,12 @@ pub struct Signature {
 #[derive(Clone, Debug)]
 pub struct Signatures {
     map: HashMap<Host, SignatureSet>
+}
+
+/// A map of user names to sets of digital signatures created by that user.
+#[derive(Clone, Debug)]
+pub struct UserSignatures {
+    map: HashMap<UserId, SignatureSet>,
 }
 
 /// Serde Visitor for deserializing `Signatures`.
@@ -509,6 +517,53 @@ impl Signatures {
     }
 
     /// The number of servers in the collection.
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
+}
+
+impl UserSignatures {
+    /// Initializes a new empty UserSignatures.
+    pub fn new() -> Self {
+        Self { map: HashMap::new() }
+    }
+
+    /// Initializes a new empty Signatures with room for a specific number of users.
+    ///
+    /// # Parameters
+    ///
+    /// * capacity: The number of items to allocate memory for.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { map: HashMap::with_capacity(capacity) }
+    }
+
+    /// Adds a signature set for a user.
+    ///
+    /// If no signature set for the given user existed in the collection, `None` is returned.
+    /// Otherwise, the signature set is returned.
+    ///
+    /// # Parameters
+    ///
+    /// * user_id: The user ID e.g. `@user:example.com`.
+    /// * signature_set: The `SignatureSet` containing the digital signatures made by the user.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the given user name cannot be parsed as a valid host.
+    pub fn insert(
+        &mut self,
+        user_id: &str,
+        signature_set: SignatureSet,
+    ) -> Result<Option<SignatureSet>, Error> {
+        let user_id = match UserId::new(user_id) {
+            Ok(user_id) => user_id,
+            _ => return Err(Error::new(format!("invalid users name: {}", user_id))),
+        };
+
+        Ok(self.map.insert(user_id, signature_set))
+    }
+
+    /// The number of users in the collection.
     pub fn len(&self) -> usize {
         self.map.len()
     }
